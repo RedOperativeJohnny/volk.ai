@@ -164,7 +164,7 @@ def get_index():
         print("Database ready!")
     # --------------------------------------------------
 
-    Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5", device="cuda")
+    Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5", device="cpu")
     Settings.llm = OpenAILike(
         model="deepseek-chat", api_key=DEEPSEEK_API_KEY, api_base="https://api.deepseek.com/v1",
         is_chat_model=True, context_window=64000
