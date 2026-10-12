@@ -7,3 +7,4 @@ llama-index-vector-stores-chroma
 llama-index-embeddings-huggingface
 llama-index-llms-openai-like
 pydantic
+boto3

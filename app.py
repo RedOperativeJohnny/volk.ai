@@ -6,6 +6,8 @@ import os                       # Interacts with the operating system (reading f
 import sqlite3                  # Built-in lightweight SQL database engine to save chat history permanently
 import uuid                     # Generates unique, random IDs for each new conversation
 import chromadb                 # Vector database engine that stores and searches through our document excerpts
+import zipfile
+import boto3
 from datetime import datetime   # Captures timestamps so chats can be ordered chronologically
 from dotenv import load_dotenv  # Loads sensitive credentials (like API keys) from a hidden .env file
 from typing import List         # Type hints to keep Python code clear and readable
@@ -135,29 +137,42 @@ def save_message(conv_id, role, content):
 # reload them on every click."
 @st.cache_resource
 def get_index():
-    # Model 1: The Embedder (The Translator).
-    # Turns questions and text into lists of numbers so the computer can compute similarity.
-    Settings.embed_model = HuggingFaceEmbedding(
-        model_name="BAAI/bge-small-en-v1.5",
-        device="cuda"  # Set to "cpu" if running without an Nvidia GPU
-    )
+    # --- NEW: Download and Unzip from Cloudflare R2 ---
+    if not os.path.exists("./chroma_db"):
+        print("Downloading vector database from Cloudflare R2...")
+        
+        # Connect to Cloudflare R2 using boto3
+        s3 = boto3.client(
+            service_name="s3",
+            endpoint_url=f"https://{os.getenv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com",
+            aws_access_key_id=os.getenv("R2_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY")
+        )
+        
+        # Download the zip file from your bucket
+        bucket_name = os.getenv("R2_BUCKET_NAME")
+        s3.download_file(bucket_name, "chroma_db.zip", "chroma_db.zip") #
+        
+        print("Extracting database...")
+        # Unzip the file
+        with zipfile.ZipFile("chroma_db.zip", "r") as zip_ref:
+            # Note: extractall(".") assumes your zip file already contains the 'chroma_db' folder structure.
+            zip_ref.extractall(".")
+            
+        # Clean up the zip file to save disk space
+        os.remove("chroma_db.zip")
+        print("Database ready!")
+    # --------------------------------------------------
 
-    # Model 2: The Large Language Model (The Brain).
-    # We point to DeepSeek's API server, using their chat model with a large context window.
+    Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5", device="cuda")
     Settings.llm = OpenAILike(
-        model="deepseek-chat",
-        api_key=DEEPSEEK_API_KEY,
-        api_base="https://api.deepseek.com/v1",
-        is_chat_model=True,
-        context_window=64000
+        model="deepseek-chat", api_key=DEEPSEEK_API_KEY, api_base="https://api.deepseek.com/v1",
+        is_chat_model=True, context_window=64000
     )
-
-    # Connect to the ChromaDB database on disk where ingest.py stored your book excerpts.
+    
     chroma_client = chromadb.PersistentClient(path="./chroma_db")
     chroma_collection = chroma_client.get_collection("adhoc_documents")
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
-    
-    # Wrap it into a searchable index
     return VectorStoreIndex.from_vector_store(vector_store)
 
 index = get_index()
